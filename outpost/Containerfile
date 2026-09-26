@@ -1,0 +1,98 @@
+# SPDX-FileCopyrightText: © 2026 Nfrastack <code@nfrastack.com>
+#
+# SPDX-License-Identifier: MIT
+
+ARG \
+    BASE_IMAGE
+
+FROM ${BASE_IMAGE}
+
+LABEL \
+        org.opencontainers.image.title="Authentik Outpost" \
+        org.opencontainers.image.description="Authentik outposts (proxy, LDAP, RADIUS, RAC)" \
+        org.opencontainers.image.url="https://hub.docker.com/r/nfrastack/authentik" \
+        org.opencontainers.image.documentation="https://github.com/nfrastack/container-authentik/blob/main/outpost/README.md" \
+        org.opencontainers.image.source="https://github.com/nfrastack/container-authentik.git" \
+        org.opencontainers.image.authors="Nfrastack <code@nfrastack.com>" \
+        org.opencontainers.image.vendor="Nfrastack <https://www.nfrastack.com>" \
+        org.opencontainers.image.licenses="MIT"
+
+ARG \
+    AUTHENTIK_USER \
+    AUTHENTIK_GROUP \
+    BUILD_PROXY="TRUE" \
+    BUILD_LDAP="TRUE" \
+    BUILD_RADIUS="TRUE" \
+    BUILD_RAC="TRUE" \
+    BUILD_GUACD="TRUE"
+
+COPY CHANGELOG.md /usr/src/container/CHANGELOG.md
+COPY LICENSE /usr/src/container/LICENSE
+COPY outpost/README.md /usr/src/container/README.md
+
+COPY --from=nfrastack/authentik-builder:local /out/bin/authentik /usr/local/bin/authentik
+COPY --from=nfrastack/authentik-builder:local /out/bin/authentik-ldap /usr/local/bin/authentik-ldap
+COPY --from=nfrastack/authentik-builder:local /out/bin/authentik-rac /usr/local/bin/authentik-rac
+COPY --from=nfrastack/authentik-builder:local /out/bin/authentik-radius /usr/local/bin/authentik-radius
+COPY --from=nfrastack/authentik-builder:local /out/versions.env /tmp/builder-versions.env
+
+ENV \
+    AUTHENTIK_USER=${AUTHENTIK_USER:-"authentik"} \
+    AUTHENTIK_GROUP=${AUTHENTIK_GROUP:-"authentik"} \
+    CONTAINER_ENABLE_SCHEDULING=TRUE \
+    IMAGE_NAME=nfrastack/authentik-outpost \
+    IMAGE_REPO_URL="https://github.com/nfrastack/container-authentik/"
+
+RUN echo "" && \
+    OUTPOST_RUN_DEPS_ALPINE=" \
+                                    libgcc \
+                                    libstdc++ \
+                                " \
+                                && \
+    GUACD_RUN_DEPS_ALPINE=" \
+                                    guacamole-server \
+                                    guacamole-server-rdp \
+                                    guacamole-server-ssh \
+                                    guacamole-server-vnc \
+                               " \
+                               && \
+    source /container/base/functions/container/build && \
+    container_build_log image && \
+    source /tmp/builder-versions.env && \
+    container_build_log add "Go" "${GO_VERSION}" "https://go.dev" && \
+    container_build_log add "Rust" "${RUST_VERSION}" "https://sh.rustup.rs" && \
+    container_build_log add "Authentik" "${AUTHENTIK_VERSION}" && \
+    rm -f /tmp/builder-versions.env && \
+    create_user ${AUTHENTIK_USER} 1000 ${AUTHENTIK_GROUP} 1000 /opt/authentik && \
+    package update && \
+    package upgrade && \
+    package install \
+                        OUTPOST_RUN_DEPS \
+                        && \
+    if var_true "${BUILD_GUACD}" ; then \
+        if var_true "${BUILD_RAC}" ; then \
+            package install GUACD_RUN_DEPS && \
+            container_build_log add "guacd" "package" "https://guacamole.apache.org" ; \
+        else \
+            echo "WARNING: BUILD_GUACD=TRUE without BUILD_RAC=TRUE, ignoring" >&2 ; \
+        fi ; \
+    fi && \
+    chown -R "${AUTHENTIK_USER}":"${AUTHENTIK_GROUP}" /opt/authentik && \
+    var_true "${BUILD_PROXY}" || rm -f /usr/local/bin/authentik && \
+    var_true "${BUILD_LDAP}" || rm -f /usr/local/bin/authentik-ldap && \
+    var_true "${BUILD_RADIUS}" || rm -f /usr/local/bin/authentik-radius && \
+    var_true "${BUILD_RAC}" || rm -f /usr/local/bin/authentik-rac && \
+    if \
+        [ ! -x /usr/local/bin/authentik ] && \
+        [ ! -x /usr/local/bin/authentik-ldap ] && \
+        [ ! -x /usr/local/bin/authentik-radius ] && \
+        [ ! -x /usr/local/bin/authentik-rac ] \
+        ; then \
+            echo "ERROR: all BUILD_* toggles are FALSE - image would contain no outpost binary@" >&2 && \
+            exit 1 ; \
+    fi ; \
+    package cleanup
+
+EXPOSE 9000 9443 9300 3389 6636 1812/udp
+
+COPY outpost/rootfs /

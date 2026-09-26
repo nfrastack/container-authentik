@@ -1,0 +1,19 @@
+#!/command/with-contenv bash
+# SPDX-FileCopyrightText: © 2026 Nfrastack <code@nfrastack.com>
+#
+# SPDX-License-Identifier: MIT
+
+source /container/base/functions/container/init
+prepare_service 20-authentik-outpost
+SERVICE_NAME="outpost-ldap"
+
+check_container_initialized
+check_service_initialized init 20-authentik-outpost
+
+liftoff
+
+print_start "Starting Authentik outpost (ldap)"
+export HOME=/opt/authentik
+outpost_map_proxy
+outpost_map_logging
+outpost_run_logged ldap "${LDAP_LOG_TYPE}" "${LDAP_LOG_PATH}" "${LDAP_LOG_FILE}" /usr/local/bin/authentik-ldap

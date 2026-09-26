@@ -1,0 +1,17 @@
+#!/command/with-contenv bash
+# SPDX-FileCopyrightText: © 2026 Nfrastack <code@nfrastack.com>
+#
+# SPDX-License-Identifier: MIT
+
+source /container/base/functions/container/init
+prepare_service 20-authentik-outpost
+SERVICE_NAME="guacd"
+
+check_container_initialized
+check_service_initialized init 20-authentik-outpost
+
+liftoff
+
+print_start "Starting guacd (${GUACD_HOST}:${GUACD_PORT})"
+outpost_run_logged guacd "${GUACD_LOG_TYPE}" "${GUACD_LOG_PATH}" "${GUACD_LOG_FILE}" \
+    guacd -f -b "${GUACD_HOST}" -l "${GUACD_PORT}" -L "${LOG_LEVEL}"

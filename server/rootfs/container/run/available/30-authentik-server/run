@@ -1,0 +1,23 @@
+#!/command/with-contenv bash
+# SPDX-FileCopyrightText: © 2026 Nfrastack <code@nfrastack.com>
+#
+# SPDX-License-Identifier: MIT
+
+source /container/base/functions/container/init
+prepare_service 20-authentik
+SERVICE_NAME="authentik-server"
+
+check_container_initialized
+check_service_initialized init 20-authentik
+
+liftoff
+
+print_start "Starting Authentik  $(grep -o "ADD: Authentik .* |" /container/build/${IMAGE_NAME/\//_}/build.log | awk '{print $3}') server"
+export VIRTUAL_ENV=/opt/authentik
+export PATH="/opt/authentik/bin:/usr/local/bin:${PATH}"
+export HOME=/opt/authentik
+authentik_map_database
+authentik_map_paths
+authentik_map_logging "${SERVER_LOG_LEVEL}"
+cd /usr/share/authentik
+authentik_run_logged server "${SERVER_LOG_TYPE}" "${SERVER_LOG_PATH}" "${SERVER_LOG_FILE}" ak server

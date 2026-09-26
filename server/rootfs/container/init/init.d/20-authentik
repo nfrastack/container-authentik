@@ -1,0 +1,44 @@
+#!/command/with-contenv bash
+# SPDX-FileCopyrightText: © 2026 Nfrastack <code@nfrastack.com>
+#
+# SPDX-License-Identifier: MIT
+
+source /container/base/functions/container/init
+prepare_service 20-authentik
+SERVICE_NAME="authentik"
+
+transform_var file \
+                    AUTHENTIK_SECRET_KEY \
+                    DB_HOST \
+                    DB_PORT \
+                    DB_NAME \
+                    DB_USER \
+                    DB_PASS
+
+authentik_configure_mode
+authentik_bootstrap_filesystem
+
+authentik_mode_enabled server || service_stop 30-authentik-server
+authentik_mode_enabled worker || service_stop 40-authentik-worker
+authentik_mode_enabled proxy || service_stop 50-authentik-outpost-proxy
+
+if authentik_mode_enabled server || authentik_mode_enabled worker ; then
+    if [ -z "${AUTHENTIK_SECRET_KEY}" ] ; then
+        print_error "AUTHENTIK_SECRET_KEY is required for server/worker modes"
+        exit 1
+    fi
+    if [ -z "${DB_PASS}${AUTHENTIK_POSTGRESQL__PASSWORD}" ] ; then
+        print_error "DB_PASS (or AUTHENTIK_POSTGRESQL__PASSWORD) is required for server/worker modes"
+        exit 1
+    fi
+fi
+
+if authentik_mode_enabled proxy ; then
+    if ! authentik_mode_enabled server && [ -z "${AUTHENTIK_HOST}" ] ; then
+        print_error "AUTHENTIK_HOST required for proxy mode without a local server"
+        exit 1
+    fi
+    sanity_var AUTHENTIK_TOKEN "token required for proxy mode"
+fi
+
+liftoff

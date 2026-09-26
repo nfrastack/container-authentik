@@ -1,0 +1,37 @@
+#!/command/with-contenv bash
+# SPDX-FileCopyrightText: © 2026 Nfrastack <code@nfrastack.com>
+#
+# SPDX-License-Identifier: MIT
+
+source /container/base/functions/container/init
+prepare_service
+SERVICE_NAME="nginx-preloader"
+
+authentik_mode_enabled() {
+    local _modes=",$(echo "${AUTHENTIK_MODE,,}" | tr -d '[:space:]'),"
+    case "${_modes}" in
+        *",${1},"* )
+            return 0
+        ;;
+        * )
+            return 1
+        ;;
+    esac
+}
+
+if authentik_mode_enabled server || authentik_mode_enabled proxy ; then
+    _container_build_env " \
+                            10-nginx/ENABLE_NGINX=TRUE \
+                            10-nginx/NGINX_SITE_ENABLED='authentik' \
+                            10-nginx/NGINX_MODE=proxy \
+                            10-nginx/NGINX_PROXY_URL='http://localhost:[env:LISTEN_PORT]' \
+                         "
+else
+    _container_build_env " \
+                            10-nginx/ENABLE_NGINX=FALSE \
+                         "
+    service_stop 10-nginx
+    service_stop 11-nginx-config-reload
+fi
+
+liftoff

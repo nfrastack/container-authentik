@@ -1,0 +1,205 @@
+# SPDX-FileCopyrightText: © 2026 Nfrastack <code@nfrastack.com>
+#
+# SPDX-License-Identifier: MIT
+
+ARG \
+    BASE_IMAGE
+
+FROM ${BASE_IMAGE}
+
+LABEL \
+        org.opencontainers.image.title="Authentik Builder" \
+        org.opencontainers.image.description="Throwaway builder for Authentik images (never pushed)" \
+        org.opencontainers.image.source="https://github.com/nfrastack/container-authentik.git" \
+        org.opencontainers.image.authors="Nfrastack <code@nfrastack.com>" \
+        org.opencontainers.image.vendor="Nfrastack <https://www.nfrastack.com>" \
+        org.opencontainers.image.licenses="MIT"
+
+ARG \
+    AUTHENTIK_VERSION="version/2026.8.3" \
+    AUTHENTIK_REPO_URL="https://github.com/goauthentik/authentik" \
+    PYTHON_VERSION="3.14" \
+    PNPM_VERSION="12.4.0" \
+    AUTHENTIK_USER \
+    AUTHENTIK_GROUP
+
+COPY builder/patches/ /usr/src/patches
+
+COPY CHANGELOG.md /usr/src/container/CHANGELOG.md
+COPY LICENSE /usr/src/container/LICENSE
+COPY README.md /usr/src/container/README.md
+
+ENV \
+    AUTHENTIK_USER=${AUTHENTIK_USER:-"authentik"} \
+    AUTHENTIK_GROUP=${AUTHENTIK_GROUP:-"authentik"} \
+    IMAGE_NAME=nfrastack/authentik-builder \
+    IMAGE_REPO_URL="https://github.com/nfrastack/container-authentik/"
+
+RUN echo "" && \
+    BUILDER_BUILD_DEPS_ALPINE=" \
+                                    build-base \
+                                    clang \
+                                    clang22-dev \
+                                    cmake \
+                                    g++ \
+                                    gcc \
+                                    git \
+                                    krb5-dev \
+                                    libffi-dev \
+                                    libltdl \
+                                    libtool \
+                                    libmaxminddb-dev \
+                                    libpq-dev \
+                                    libxml2-dev \
+                                    libxslt-dev \
+                                    libxslt \
+                                    linux-headers \
+                                    llvm22 \
+                                    make \
+                                    musl-dev \
+                                    nodejs-current \
+                                    npm \
+                                    openssl-dev \
+                                    perl \
+                                    pkgconf \
+                                    postgresql-dev \
+                                    xmlsec-dev \
+                                    zlib-dev \
+                                " \
+                                && \
+    source /container/base/functions/container/build && \
+    container_build_log image && \
+    create_user ${AUTHENTIK_USER} 1000 ${AUTHENTIK_GROUP} 1000 /opt/authentik && \
+    package update && \
+    package upgrade && \
+    package install \
+                        BUILDER_BUILD_DEPS \
+                        && \
+    package build go && \
+    package build python "${PYTHON_VERSION}" && \
+    pip install --break-system-packages uv && \
+    \
+    clone_git_repo "${AUTHENTIK_REPO_URL}" "${AUTHENTIK_VERSION}" /usr/src/authentik && \
+    \
+    RUST_VERSION=$(sed -n 's/channel = "\(.*\)"/\1/p' /usr/src/authentik/rust-toolchain.toml) && \
+    curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "${RUST_VERSION}" && \
+    source /root/.cargo/env && \
+    export PATH="/root/.cargo/bin:${PATH}" && \
+    export LIBCLANG_PATH="/usr/lib/llvm22/lib" && \
+    export RUSTFLAGS="-L /usr/lib --cfg tokio_unstable -C strip=symbols" && \
+    export AWS_LC_FIPS_SYS_CC=clang && \
+    container_build_log add "Rust" "${RUST_VERSION}" "https://sh.rustup.rs" && \
+    \
+    npm install -g "pnpm@${PNPM_VERSION}" && \
+    container_build_log add "pnpm" "${PNPM_VERSION}" "https://pnpm.io" && \
+    \
+    export UV_COMPILE_BYTECODE=1 && \
+    export UV_LINK_MODE=copy && \
+    export UV_NATIVE_TLS=1 && \
+    export UV_PYTHON_DOWNLOADS=never && \
+    export UV_NO_BINARY_PACKAGE="cryptography lxml python-kadmin-rs xmlsec" && \
+    uv venv /opt/authentik \
+        --python /usr/local/bin/python$(echo ${PYTHON_VERSION} | cut -d. -f1-2) && \
+    chown -R "${AUTHENTIK_USER}":"${AUTHENTIK_GROUP}" /opt/authentik && \
+    source /opt/authentik/bin/activate && \
+    cd /usr/src/authentik && \
+    UV_PROJECT_ENVIRONMENT=/opt/authentik \
+        uv sync --locked --no-install-project --no-dev && \
+    \
+    pnpm --dir web install --frozen-lockfile && \
+    pnpm --dir web run build && \
+    \
+    PYMM=$(echo ${PYTHON_VERSION} | cut -d. -f1-2) && \
+    if [ ! -f "/usr/src/python/libpython${PYMM}.a" ]; then \
+        make -C /usr/src/python -j"$(nproc)" "libpython${PYMM}.a"; \
+    fi && \
+    cp "/usr/src/python/libpython${PYMM}.a" /usr/local/lib/ && \
+    \
+    cargo fetch --locked && \
+    if [ "$(uname -m)" = "aarch64" ] ; then \
+        FIPS_CRATE=$(echo /root/.cargo/registry/src/*/aws-lc-fips-sys-0.14.2) && \
+        test -d "${FIPS_CRATE}" && \
+        SI_SRC="${FIPS_CRATE}/aws-lc/crypto/fipsmodule/service_indicator/service_indicator.c" && \
+        test -f "${SI_SRC}" && \
+        { grep -q 'put_set_thread_local_error' "${SI_SRC}" || \
+          ( cd "${FIPS_CRATE}" && git apply /usr/src/patches/aws-lc-fips-sys-0.14.2-aarch64-2920-backport.patch ); } && \
+        grep -q 'put_set_thread_local_error' "${SI_SRC}"; \
+    fi && \
+    cargo build --package authentik --no-default-features --features core,proxy --locked --release && \
+    container_build_log add "Authentik (rust core,proxy)" "${AUTHENTIK_VERSION}" "${AUTHENTIK_REPO_URL}" && \
+    \
+    export CGO_ENABLED=0 && \
+    export GOFLAGS="-trimpath" && \
+    go build -ldflags "-s -w" -tags outpost_static_embed -o /tmp/authentik-ldap ./cmd/ldap && \
+    go build -ldflags "-s -w" -tags outpost_static_embed -o /tmp/authentik-radius ./cmd/radius && \
+    go build -ldflags "-s -w" -tags outpost_static_embed -o /tmp/authentik-rac ./cmd/rac && \
+    container_build_log add "Authentik outposts (go)" "${AUTHENTIK_VERSION}" "${AUTHENTIK_REPO_URL}" && \
+    \
+    rm -rf /usr/local/bin/go /usr/local/bin/godoc /usr/local/bin/gofmt \
+           /usr/local/bin/pnpm /usr/local/bin/pnpx \
+           /usr/local/bin/uv /usr/local/bin/uvx \
+           /usr/local/lib/node_modules && \
+    \
+    /opt/authentik/bin/python -c "import django_channels_postgres, django_dramatiq_postgres, django_postgres_cache, guardian; print('editable imports OK')" && \
+    \
+    mkdir -p /out/bin /out/share /out/blueprints && \
+    cp ./target/release/authentik /out/bin/authentik && \
+    cp /tmp/authentik-ldap /out/bin/authentik-ldap && \
+    cp /tmp/authentik-radius /out/bin/authentik-radius && \
+    cp /tmp/authentik-rac /out/bin/authentik-rac && \
+    rm -f /tmp/authentik-ldap /tmp/authentik-radius /tmp/authentik-rac && \
+    cp -R /usr/src/authentik/blueprints/. /out/blueprints/ && \
+    mv \
+        /usr/src/authentik/authentik \
+        /usr/src/authentik/lifecycle \
+        /usr/src/authentik/manage.py \
+        /usr/src/authentik/packages \
+        /usr/src/authentik/schemas \
+        /usr/src/authentik/schema.yml \
+        /usr/src/authentik/locale \
+        /usr/src/authentik/web \
+        /usr/src/authentik/pyproject.toml \
+        /usr/src/authentik/uv.lock \
+            /out/share/ && \
+    rm -rf \
+        /out/share/web/bundler \
+        /out/share/web/docs \
+        /out/share/web/e2e \
+        /out/share/web/logger \
+        /out/share/web/node_modules \
+        /out/share/web/packages \
+        /out/share/web/package.json \
+        /out/share/web/pnpm-lock.yaml \
+        /out/share/web/scripts \
+        /out/share/web/src \
+        /out/share/web/test \
+        /out/share/web/types \
+        /out/share/web/xliff \
+        && \
+    sed -i 's#/usr/src/authentik#/usr/share/authentik#g' \
+        /opt/authentik/lib/python*/site-packages/_editable_impl_*.pth \
+        /opt/authentik/lib/python*/site-packages/*.dist-info/direct_url.json && \
+    mv /opt/authentik /out/venv && \
+    chown -R "${AUTHENTIK_USER}":"${AUTHENTIK_GROUP}" /out && \
+    container_build_log add "Authentik" "${AUTHENTIK_VERSION}" "${AUTHENTIK_REPO_URL}" && \
+    { \
+        echo "AUTHENTIK_VERSION=\"${AUTHENTIK_VERSION}\"" ; \
+        echo "RUST_VERSION=\"${RUST_VERSION}\"" ; \
+        echo "GO_VERSION=\"$(go version | awk '{print $3}')\"" ; \
+        echo "PYTHON_VERSION=\"$(/usr/local/bin/python3 --version 2>&1 | awk '{print $2}')\"" ; \
+        echo "PNPM_VERSION=\"${PNPM_VERSION}\"" ; \
+    } > /out/versions.env && \
+    rm -rf /root/.cargo \
+           /root/.rustup \
+           /root/.cache \
+           /root/.local \
+           /root/.npm \
+           /root/go \
+           /usr/src/authentik \
+           /usr/src/python \
+           /usr/src/go \
+           /usr/src/patches \
+           /tmp/authentik-* && \
+    package cleanup && \
+    cat /out/versions.env && \
+    ls -la /out/bin /out/share

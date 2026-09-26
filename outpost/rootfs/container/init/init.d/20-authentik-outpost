@@ -1,0 +1,30 @@
+#!/command/with-contenv bash
+# SPDX-FileCopyrightText: © 2026 Nfrastack <code@nfrastack.com>
+#
+# SPDX-License-Identifier: MIT
+
+source /container/base/functions/container/init
+prepare_service 20-authentik-outpost
+SERVICE_NAME="authentik-outpost"
+
+transform_var file \
+                    AUTHENTIK_TOKEN
+
+outpost_configure
+outpost_bootstrap_filesystem
+
+outpost_enabled proxy || service_stop 30-outpost-proxy
+outpost_enabled ldap || service_stop 40-outpost-ldap
+outpost_enabled radius || service_stop 50-outpost-radius
+outpost_enabled rac || service_stop 60-outpost-rac
+
+if outpost_enabled rac && command -v guacd >/dev/null 2>&1 ; then
+    :
+else
+    service_stop 61-guacd
+fi
+
+sanity_var AUTHENTIK_HOST "URL of authentik server"
+sanity-var AUTHENTIK_TOKEN "outpost token from server"
+
+liftoff

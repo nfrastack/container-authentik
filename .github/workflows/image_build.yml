@@ -1,0 +1,470 @@
+on:
+  push:
+    paths:
+      - '**'
+      - '!CHANGELOG.md'
+      - '!/examples/*'
+      - '!LICENSE'
+      - '!README.md'
+      - '!/zabbix_templates/*'
+  workflow_dispatch:
+    inputs:
+      base_image:
+        description: 'Base image (default: docker.io/nfrastack/base:alpine_3.24)'
+        required: false
+      authentik_version:
+        description: 'Authentik pin (default: version/2026.8.3)'
+        required: false
+      python_version:
+        description: 'Python version (default: 3.14)'
+        required: false
+      pnpm_version:
+        description: 'pnpm version (default: 12.4.0)'
+        required: false
+
+env:
+  BASE_IMAGE: ${{ inputs.base_image || 'docker.io/nfrastack/base:alpine_3.24' }}
+  AUTHENTIK_VERSION: ${{ inputs.authentik_version || 'version/2026.8.3' }}
+  PYTHON_VERSION: ${{ inputs.python_version || '3.14' }}
+  PNPM_VERSION: ${{ inputs.pnpm_version || '12.4.0' }}
+  BUILDER_TAG: nfrastack/authentik-builder:local
+
+jobs:
+  prepare:
+    uses: nfrastack/gha/.github/workflows/artifacts-encrypt.yml@main
+    secrets: inherit
+
+  build-amd64:
+    name: "build-amd64"
+    runs-on: ubuntu-latest
+    needs: prepare
+    if: github.event_name != 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download Encrypted Files
+        uses: actions/download-artifact@v8
+        with:
+          name: encrypted-artifacts
+          path: ./
+        continue-on-error: true
+
+      - name: Clean repository
+        shell: bash
+        run: |
+          if [ -f "cleanup.sh" ] ; then
+            chmod +x cleanup.sh
+            ./cleanup.sh
+          fi
+
+      - name: Set up Docker Buildx (docker driver)
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute version and tags
+        id: tags
+        shell: bash
+        run: |
+          VERSION="$(grep -m1 '^## ' CHANGELOG.md | awk '{print $2}')"
+          if [ -z "${VERSION}" ] ; then
+            echo "::error::Could not parse version from CHANGELOG.md top '## <version>' entry"
+            exit 1
+          fi
+          for v in BASE_IMAGE AUTHENTIK_VERSION PYTHON_VERSION PNPM_VERSION ; do
+            if [ -z "${!v}" ] ; then
+              echo "::error::${v} is empty, check workflow env/inputs"
+              exit 1
+            fi
+          done
+          echo "version=${VERSION}"
+          SHA_SHORT="${GITHUB_SHA:0:12}"
+
+          SERVER_TAGS=""
+          OUTPOST_TAGS=""
+          add_server() {
+            SERVER_TAGS="${SERVER_TAGS},docker.io/nfrastack/authentik:$1"
+            SERVER_TAGS="${SERVER_TAGS},ghcr.io/${GITHUB_REPOSITORY}:$1"
+          }
+          add_outpost() {
+            OUTPOST_TAGS="${OUTPOST_TAGS},docker.io/nfrastack/authentik:$1"
+            OUTPOST_TAGS="${OUTPOST_TAGS},ghcr.io/${GITHUB_REPOSITORY}:$1"
+          }
+          if [[ "${GITHUB_REF}" == refs/tags/* ]] ; then
+            GIT_TAG="${GITHUB_REF#refs/tags/}"
+            add_server "${GIT_TAG}"
+            add_outpost "${GIT_TAG}-outpost"
+          elif [[ "${GITHUB_REF}" == refs/heads/main || "${GITHUB_REF}" == refs/heads/master ]] ; then
+            add_server "${VERSION}"
+            add_server "latest"
+            add_server "server"
+            add_outpost "${VERSION}-outpost"
+            add_outpost "outpost"
+          else
+            SAFE_BRANCH="$(echo "${GITHUB_REF#refs/heads/}" | sed 's|/|-|g')"
+            add_server "${SAFE_BRANCH}-${VERSION}"
+            add_outpost "${SAFE_BRANCH}-${VERSION}-outpost"
+          fi
+          SERVER_TAGS="${SERVER_TAGS#,}"
+          OUTPOST_TAGS="${OUTPOST_TAGS#,}"
+          echo "server_tags=${SERVER_TAGS}" >> $GITHUB_OUTPUT
+          echo "outpost_tags=${OUTPOST_TAGS}" >> $GITHUB_OUTPUT
+
+          STAGING="ghcr.io/${GITHUB_REPOSITORY}:ci-${SHA_SHORT}"
+          echo "server_staging=${STAGING}-server-amd64" >> $GITHUB_OUTPUT
+          echo "outpost_staging=${STAGING}-outpost-amd64" >> $GITHUB_OUTPUT
+
+      - name: Build builder (throwaway, daemon-only, never pushed)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: builder/Containerfile
+          push: false
+          load: true
+          provenance: false
+          tags: ${{ env.BUILDER_TAG }}
+          build-args: |
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
+            AUTHENTIK_VERSION=${{ env.AUTHENTIK_VERSION }}
+            PYTHON_VERSION=${{ env.PYTHON_VERSION }}
+            PNPM_VERSION=${{ env.PNPM_VERSION }}
+
+      - name: Build and push server (amd64 staging)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: server/Containerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ steps.tags.outputs.server_staging }}
+          build-args: |
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
+
+      - name: Build and push outpost (amd64 staging)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: outpost/Containerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ steps.tags.outputs.outpost_staging }}
+          build-args: |
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
+
+  build-arm64:
+    name: "build-arm64"
+    runs-on: ubuntu-24.04-arm
+    needs: prepare
+    if: github.event_name != 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download Encrypted Files
+        uses: actions/download-artifact@v8
+        with:
+          name: encrypted-artifacts
+          path: ./
+        continue-on-error: true
+
+      - name: Clean repository
+        shell: bash
+        run: |
+          if [ -f "cleanup.sh" ] ; then
+            chmod +x cleanup.sh
+            ./cleanup.sh
+          fi
+
+      - name: Set up Docker Buildx (docker driver)
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute version and tags
+        id: tags
+        shell: bash
+        run: |
+          VERSION="$(grep -m1 '^## ' CHANGELOG.md | awk '{print $2}')"
+          if [ -z "${VERSION}" ] ; then
+            echo "::error::Could not parse version from CHANGELOG.md top '## <version>' entry"
+            exit 1
+          fi
+          for v in BASE_IMAGE AUTHENTIK_VERSION PYTHON_VERSION PNPM_VERSION ; do
+            if [ -z "${!v}" ] ; then
+              echo "::error::${v} is empty, check workflow env/inputs"
+              exit 1
+            fi
+          done
+          echo "version=${VERSION}"
+          SHA_SHORT="${GITHUB_SHA:0:12}"
+
+          SERVER_TAGS=""
+          OUTPOST_TAGS=""
+          add_server() {
+            SERVER_TAGS="${SERVER_TAGS},docker.io/nfrastack/authentik:$1"
+            SERVER_TAGS="${SERVER_TAGS},ghcr.io/${GITHUB_REPOSITORY}:$1"
+          }
+          add_outpost() {
+            OUTPOST_TAGS="${OUTPOST_TAGS},docker.io/nfrastack/authentik:$1"
+            OUTPOST_TAGS="${OUTPOST_TAGS},ghcr.io/${GITHUB_REPOSITORY}:$1"
+          }
+          if [[ "${GITHUB_REF}" == refs/tags/* ]] ; then
+            GIT_TAG="${GITHUB_REF#refs/tags/}"
+            add_server "${GIT_TAG}"
+            add_outpost "${GIT_TAG}-outpost"
+          elif [[ "${GITHUB_REF}" == refs/heads/main || "${GITHUB_REF}" == refs/heads/master ]] ; then
+            add_server "${VERSION}"
+            add_server "latest"
+            add_server "server"
+            add_outpost "${VERSION}-outpost"
+            add_outpost "outpost"
+          else
+            SAFE_BRANCH="$(echo "${GITHUB_REF#refs/heads/}" | sed 's|/|-|g')"
+            add_server "${SAFE_BRANCH}-${VERSION}"
+            add_outpost "${SAFE_BRANCH}-${VERSION}-outpost"
+          fi
+          SERVER_TAGS="${SERVER_TAGS#,}"
+          OUTPOST_TAGS="${OUTPOST_TAGS#,}"
+          echo "server_tags=${SERVER_TAGS}" >> $GITHUB_OUTPUT
+          echo "outpost_tags=${OUTPOST_TAGS}" >> $GITHUB_OUTPUT
+
+          STAGING="ghcr.io/${GITHUB_REPOSITORY}:ci-${SHA_SHORT}"
+          echo "server_staging=${STAGING}-server-arm64" >> $GITHUB_OUTPUT
+          echo "outpost_staging=${STAGING}-outpost-arm64" >> $GITHUB_OUTPUT
+
+      - name: Build builder
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: builder/Containerfile
+          push: false
+          load: true
+          provenance: false
+          tags: ${{ env.BUILDER_TAG }}
+          build-args: |
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
+            AUTHENTIK_VERSION=${{ env.AUTHENTIK_VERSION }}
+            PYTHON_VERSION=${{ env.PYTHON_VERSION }}
+            PNPM_VERSION=${{ env.PNPM_VERSION }}
+
+      - name: Build and push server
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: server/Containerfile
+          platforms: linux/arm64
+          push: true
+          provenance: false
+          tags: ${{ steps.tags.outputs.server_staging }}
+          build-args: |
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
+
+      - name: Build and push outpost
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: outpost/Containerfile
+          platforms: linux/arm64
+          push: true
+          provenance: false
+          tags: ${{ steps.tags.outputs.outpost_staging }}
+          build-args: |
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
+
+  manifest:
+    name: "manifest"
+    runs-on: ubuntu-latest
+    needs: [build-amd64, build-arm64]
+    if: always() && github.event_name != 'pull_request' && (needs.build-amd64.result == 'success' || needs.build-arm64.result == 'success')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Compute version and tags
+        id: tags
+        shell: bash
+        run: |
+          VERSION="$(grep -m1 '^## ' CHANGELOG.md | awk '{print $2}')"
+          if [ -z "${VERSION}" ] ; then
+            echo "::error::Could not parse version from CHANGELOG.md top '## <version>' entry"
+            exit 1
+          fi
+          for v in BASE_IMAGE AUTHENTIK_VERSION PYTHON_VERSION PNPM_VERSION ; do
+            if [ -z "${!v}" ] ; then
+              echo "::error::${v} is empty, check workflow env/inputs"
+              exit 1
+            fi
+          done
+          SHA_SHORT="${GITHUB_SHA:0:12}"
+          SERVER_TAGS=""
+          OUTPOST_TAGS=""
+          add_server() {
+            SERVER_TAGS="${SERVER_TAGS},docker.io/nfrastack/authentik:$1"
+            SERVER_TAGS="${SERVER_TAGS},ghcr.io/${GITHUB_REPOSITORY}:$1"
+          }
+          add_outpost() {
+            OUTPOST_TAGS="${OUTPOST_TAGS},docker.io/nfrastack/authentik:$1"
+            OUTPOST_TAGS="${OUTPOST_TAGS},ghcr.io/${GITHUB_REPOSITORY}:$1"
+          }
+          if [[ "${GITHUB_REF}" == refs/tags/* ]] ; then
+            GIT_TAG="${GITHUB_REF#refs/tags/}"
+            add_server "${GIT_TAG}"
+            add_outpost "${GIT_TAG}-outpost"
+          elif [[ "${GITHUB_REF}" == refs/heads/main || "${GITHUB_REF}" == refs/heads/master ]] ; then
+            add_server "${VERSION}"
+            add_server "latest"
+            add_server "server"
+            add_outpost "${VERSION}-outpost"
+            add_outpost "outpost"
+          else
+            SAFE_BRANCH="$(echo "${GITHUB_REF#refs/heads/}" | sed 's|/|-|g')"
+            add_server "${SAFE_BRANCH}-${VERSION}"
+            add_outpost "${SAFE_BRANCH}-${VERSION}-outpost"
+          fi
+          SERVER_TAGS="${SERVER_TAGS#,}"
+          OUTPOST_TAGS="${OUTPOST_TAGS#,}"
+          echo "server_tags=${SERVER_TAGS}" >> $GITHUB_OUTPUT
+          echo "outpost_tags=${OUTPOST_TAGS}" >> $GITHUB_OUTPUT
+          STAGING="ghcr.io/${GITHUB_REPOSITORY}:ci-${SHA_SHORT}"
+          echo "amd64_server=${STAGING}-server-amd64" >> $GITHUB_OUTPUT
+          echo "arm64_server=${STAGING}-server-arm64" >> $GITHUB_OUTPUT
+          echo "amd64_outpost=${STAGING}-outpost-amd64" >> $GITHUB_OUTPUT
+          echo "arm64_outpost=${STAGING}-outpost-arm64" >> $GITHUB_OUTPUT
+          echo "server_tags=${SERVER_TAGS}"
+          echo "outpost_tags=${OUTPOST_TAGS}"
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create and push manifests
+        env:
+          SERVER_TAGS: ${{ steps.tags.outputs.server_tags }}
+          OUTPOST_TAGS: ${{ steps.tags.outputs.outpost_tags }}
+          AMD64_SERVER: ${{ steps.tags.outputs.amd64_server }}
+          ARM64_SERVER: ${{ steps.tags.outputs.arm64_server }}
+          AMD64_OUTPOST: ${{ steps.tags.outputs.amd64_outpost }}
+          ARM64_OUTPOST: ${{ steps.tags.outputs.arm64_outpost }}
+          AMD64_RESULT: ${{ needs.build-amd64.result }}
+          ARM64_RESULT: ${{ needs.build-arm64.result }}
+        shell: bash
+        run: |
+          manifest_one() {
+            sources=""
+            if [ "${AMD64_RESULT}" = "success" ] ; then
+              sources="$2"
+            fi
+            if [ "${ARM64_RESULT}" = "success" ] ; then
+              sources="${sources} $3"
+            fi
+            sources="$(echo "${sources}" | xargs)"
+            if [ -z "${sources}" ] ; then
+              echo "::error::No successful arch builds for $1"
+              return 1
+            fi
+            IFS=',' read -ra TAGS <<< "$1"
+            for tag in "${TAGS[@]}" ; do
+              tag="$(echo "${tag}" | xargs)"
+              if [ -z "${tag}" ] ; then continue; fi
+              echo "Creating manifest for: ${tag}"
+              docker buildx imagetools create -t "${tag}" ${sources}
+            done
+          }
+          manifest_one "${SERVER_TAGS}" "${AMD64_SERVER}" "${ARM64_SERVER}"
+          manifest_one "${OUTPOST_TAGS}" "${AMD64_OUTPOST}" "${ARM64_OUTPOST}"
+
+      - name: Delete staging tags
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          PKG="$(echo "${GITHUB_REPOSITORY}" | cut -d/ -f2)"
+          for id in $(gh api "/orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/${PKG}/versions" \
+              --paginate -q '.[] | select((.metadata.container.tags // []) | map(startswith("ci-")) | any) | .id'); do
+            echo "Deleting staging version id: ${id}"
+            gh api -X DELETE "/orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/${PKG}/versions/${id}" >/dev/null \
+              || echo "::warning::Could not delete staging version id ${id}"
+          done
+          echo "Staging cleanup done"
+
+      - name: Build Summary
+        env:
+          SERVER_TAGS: ${{ steps.tags.outputs.server_tags }}
+          OUTPOST_TAGS: ${{ steps.tags.outputs.outpost_tags }}
+          AMD64_RESULT: ${{ needs.build-amd64.result }}
+          ARM64_RESULT: ${{ needs.build-arm64.result }}
+        shell: bash
+        run: |
+          {
+            echo "## Container Build Summary (all)"
+            echo ""
+            echo "| Job | Status |"
+            echo "|-----|--------|"
+            echo "| amd64 | ${AMD64_RESULT} |"
+            echo "| arm64 | ${ARM64_RESULT} |"
+            echo ""
+            echo "### Server tags"
+            echo ""
+            IFS=',' read -ra TAGS <<< "${SERVER_TAGS}"
+            for tag in "${TAGS[@]}" ; do
+              tag="$(echo "${tag}" | xargs)"
+              if [ -n "${tag}" ] ; then echo "- \`${tag}\`"; fi
+            done
+            echo ""
+            echo "### Outpost tags"
+            echo ""
+            IFS=',' read -ra TAGS <<< "${OUTPOST_TAGS}"
+            for tag in "${TAGS[@]}" ; do
+              tag="$(echo "${tag}" | xargs)"
+              if [ -n "${tag}" ] ; then echo "- \`${tag}\`"; fi
+            done
+          } >> $GITHUB_STEP_SUMMARY
+
+  cleanup:
+    needs: [manifest]
+    if: always()
+    uses: nfrastack/gha/.github/workflows/artifacts-remove.yml@main
+    secrets: inherit

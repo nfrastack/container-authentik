@@ -1,0 +1,19 @@
+#!/command/with-contenv bash
+# SPDX-FileCopyrightText: © 2026 Nfrastack <code@nfrastack.com>
+#
+# SPDX-License-Identifier: MIT
+
+source /container/base/functions/container/init
+prepare_service 20-authentik-outpost
+SERVICE_NAME="outpost-proxy"
+
+check_container_initialized
+check_service_initialized init 20-authentik-outpost
+
+liftoff
+
+print_start "Starting Authentik outpost (proxy) $(grep -o "ADD: Authentik .* |" /container/build/${IMAGE_NAME/\//_}/build.log | awk '{print $3}')"
+export HOME=/opt/authentik
+outpost_map_proxy
+outpost_map_logging
+outpost_run_logged proxy "${PROXY_LOG_TYPE}" "${PROXY_LOG_PATH}" "${PROXY_LOG_FILE}" /usr/local/bin/authentik proxy

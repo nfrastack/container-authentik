@@ -1,0 +1,118 @@
+# SPDX-FileCopyrightText: © 2026 Nfrastack <code@nfrastack.com>
+#
+# SPDX-License-Identifier: MIT
+
+ARG \
+    BASE_IMAGE
+
+FROM ${BASE_IMAGE}
+
+LABEL \
+        org.opencontainers.image.title="Authentik" \
+        org.opencontainers.image.description="Authentik Identity Provider" \
+        org.opencontainers.image.url="https://hub.docker.com/r/nfrastack/authentik" \
+        org.opencontainers.image.documentation="https://github.com/nfrastack/container-authentik/blob/main/README.md" \
+        org.opencontainers.image.source="https://github.com/nfrastack/container-authentik.git" \
+        org.opencontainers.image.authors="Nfrastack <code@nfrastack.com>" \
+        org.opencontainers.image.vendor="Nfrastack <https://www.nfrastack.com>" \
+        org.opencontainers.image.licenses="MIT"
+
+ARG \
+    AUTHENTIK_USER \
+    AUTHENTIK_GROUP
+
+COPY CHANGELOG.md /usr/src/container/CHANGELOG.md
+COPY LICENSE /usr/src/container/LICENSE
+COPY README.md /usr/src/container/README.md
+
+COPY --from=nfrastack/authentik-builder:local /out/bin/authentik /usr/local/bin/authentik
+COPY --from=nfrastack/authentik-builder:local /out/blueprints/ /blueprints/
+COPY --from=nfrastack/authentik-builder:local /out/share/ /usr/share/authentik/
+COPY --from=nfrastack/authentik-builder:local /out/venv/ /opt/authentik/
+COPY --from=nfrastack/authentik-builder:local /out/versions.env /tmp/builder-versions.env
+COPY --from=nfrastack/authentik-builder:local /usr/local/bin/ /usr/local/bin/
+COPY --from=nfrastack/authentik-builder:local /usr/local/lib/ /usr/local/lib/
+
+ENV \
+    AUTHENTIK_USER=${AUTHENTIK_USER:-"authentik"} \
+    AUTHENTIK_GROUP=${AUTHENTIK_GROUP:-"authentik"} \
+    IMAGE_NAME=nfrastack/authentik \
+    IMAGE_REPO_URL="https://github.com/nfrastack/container-authentik/"
+
+RUN echo "" && \
+    BUILD_ENV=" \
+                10-nginx/ENABLE_NGINX=FALSE \
+                10-nginx/NGINX_SITE_ENABLED='authentik' \
+                10-nginx/NGINX_MODE=proxy \
+                10-nginx/NGINX_PROXY_URL='http://localhost:[env:LISTEN_PORT]' \
+              " \
+              && \
+    AUTHENTIK_BUILD_DEPS_ALPINE=" \
+                                    pax-utils \
+                                " \
+                                && \
+    AUTHENTIK_RUN_DEPS_ALPINE=" \
+                                    heimdal-libs \
+                                    krb5-libs \
+                                    libffi \
+                                    libltdl \
+                                    libmaxminddb \
+                                    libpq \
+                                    libxml2 \
+                                    libxslt \
+                                    xmlsec \
+                                    zlib \
+                                  " \
+                                  && \
+    source /container/base/functions/container/build && \
+    container_build_log image && \
+    source /tmp/builder-versions.env && \
+    container_build_log add "Python" "${PYTHON_VERSION}" "https://python.org" && \
+    container_build_log add "Rust" "${RUST_VERSION}" "https://sh.rustup.rs" && \
+    container_build_log add "Go" "${GO_VERSION}" "https://go.dev" && \
+    container_build_log add "pnpm" "${PNPM_VERSION}" "https://pnpm.io" && \
+    container_build_log add "Authentik" "${AUTHENTIK_VERSION}" && \
+    rm -f /tmp/builder-versions.env && \
+    create_user ${AUTHENTIK_USER} 1000 ${AUTHENTIK_GROUP} 1000 /opt/authentik && \
+    package update && \
+    package upgrade && \
+    package install \
+                        AUTHENTIK_BUILD_DEPS \
+                        AUTHENTIK_RUN_DEPS \
+                        && \
+    \
+    PROVIDERS=$(find /usr/local /opt/authentik -type f -executable \
+                    -not -path '*/node_modules/*' 2>/dev/null \
+                    | xargs -r scanelf --needed --nobanner --format '%n#p' 2>/dev/null \
+                    | tr ',' '\n' | sort -u \
+                    | awk 'system("[ -e /usr/local/lib/" $1 " ] || [ -e /opt/authentik/lib/" $1 " ]") == 0 { next } { print "so:" $1 }') && \
+    for _lib in ${PROVIDERS} ; do \
+        apk add -t .authentik-providers-deps "${_lib}" || echo "WARNING: no Alpine provider for ${_lib}, skipping" >&2 ; \
+    done && \
+    mkdir -p \
+                /blueprints \
+                /usr/share/authentik \
+                && \
+    chown -R "${AUTHENTIK_USER}":"${AUTHENTIK_GROUP}" \
+                /blueprints \
+                /opt/authentik \
+                /usr/share/authentik \
+                && \
+    ln -s /usr/share/authentik/lifecycle/ak /usr/local/bin/ak && \
+    ln -s /usr/share/authentik/web /web && \
+    /opt/authentik/bin/python -c "import django_channels_postgres, django_dramatiq_postgres, django_postgres_cache, guardian; print('editable imports OK')" && \
+    rm -f \
+            /usr/local/bin/go \
+            /usr/local/bin/godoc \
+            /usr/local/bin/gofmt \
+            /usr/local/bin/pn \
+            /usr/local/bin/pnx \
+            /usr/local/lib/libpython*.a \
+            && \
+    \
+    package remove \
+                    AUTHENTIK_BUILD_DEPS \
+                    && \
+    package cleanup
+
+COPY server/rootfs /

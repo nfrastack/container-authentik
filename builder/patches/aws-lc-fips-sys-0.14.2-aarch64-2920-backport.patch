@@ -1,0 +1,30 @@
+--- a/aws-lc/crypto/fipsmodule/service_indicator/service_indicator.c
++++ b/aws-lc/crypto/fipsmodule/service_indicator/service_indicator.c
+@@ -20,6 +20,18 @@
+
+ #if defined(AWSLC_FIPS)
+
++// Trampoline function to avoid ARM64 ADR range issues in large FIPS module.
++// This function is intentionally not inlined to ensure the __FILE__ string
++// literal reference stays close to the call site, avoiding the +/-1MB
++// PC-relative addressing limit of the ARM64 ADR instruction.
++// Backport of upstream aws/aws-lc#2920, which aws-lc-fips-sys 0.14.2 predates:
++// without it, the delocator rewrites adrp+add of this TU's __FILE__ literal
++// to adr, which overflows +/-1MB once inlined into distant callers of the
++// single-TU FIPS build (bcm.c: pc-relative address offset out of range).
++static OPENSSL_NOINLINE void put_set_thread_local_error(void) {
++  OPENSSL_PUT_ERROR(CRYPTO, ERR_R_INTERNAL_ERROR);
++}
++
+ #define STATE_UNLOCKED 0
+ #define TLS_MD_EXTENDED_MASTER_SECRET_CONST "extended master secret"
+ #define TLS_MD_EXTENDED_MASTER_SECRET_CONST_SIZE 22
+@@ -56,7 +68,7 @@
+
+     if (!CRYPTO_set_thread_local(
+             AWSLC_THREAD_LOCAL_FIPS_SERVICE_INDICATOR_STATE, indicator, free)) {
+-      OPENSSL_PUT_ERROR(CRYPTO, ERR_R_INTERNAL_ERROR);
++      put_set_thread_local_error();
+       return NULL;
+     }
+   }

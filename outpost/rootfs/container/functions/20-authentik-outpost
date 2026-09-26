@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: © 2026 Nfrastack <code@nfrastack.com>
+#
+# SPDX-License-Identifier: MIT
+
+outpost_bootstrap_filesystem() {
+    create_folder \
+                    "${LOG_PATH}" \
+                    "${OUTPOST_USER}":"${OUTPOST_GROUP}" 755
+
+    create_folder "${PROMETHEUS_MULTIPROC_PATH}" "${OUTPOST_USER}":"${OUTPOST_GROUP}"
+}
+
+outpost_enabled() {
+    local _wanted="$1"
+    local _selected
+    _selected=$(echo "${OUTPOST_TYPE}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+    [ "${_selected}" = "${_wanted}" ]
+}
+
+outpost_configure() {
+    local _selected
+    _selected=$(echo "${OUTPOST_TYPE}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+    case "${_selected}" in
+        ldap | proxy | rac | radius )
+            :
+        ;;
+        * )
+            print_error "Unknown OUTPOST_TYPE '${OUTPOST_TYPE}' (valid: proxy,ldap,radius,rac)"
+            return 1
+        ;;
+    esac
+    OUTPOST_TYPE="${_selected}"
+    export OUTPOST_TYPE
+
+    local _binary
+    _binary=$(outpost_binary "${_selected}")
+    if [ ! -x "${_binary}" ] ; then
+        print_error "OUTPOST_TYPE='${_selected}' needs ${_binary}, which is not in this image (rebuild with BUILD_${_selected^^}=TRUE)"
+        return 1
+    fi
+}
+
+outpost_binary() {
+    case "$1" in
+        ldap ) echo "/usr/local/bin/authentik-ldap" ;;
+        proxy ) echo "/usr/local/bin/authentik" ;;
+        rac ) echo "/usr/local/bin/authentik-rac" ;;
+        radius ) echo "/usr/local/bin/authentik-radius" ;;
+    esac
+}
+
+outpost_map_proxy() {
+    export AUTHENTIK_HOST
+    export AUTHENTIK_TOKEN
+    export AUTHENTIK_INSECURE
+    if [ -n "${AUTHENTIK_HOST_BROWSER}" ] ; then
+        export AUTHENTIK_HOST_BROWSER
+    fi
+}
+
+outpost_map_logging() {
+    export AUTHENTIK_LOG_LEVEL="${AUTHENTIK_LOG_LEVEL:-${LOG_LEVEL}}"
+}
+
+outpost_run_logged() {
+    local _tag="$1" _type="$2" _dir="$3" _file="$4"
+    shift 4
+    local _log="${_dir%/}/${_file}"
+    case "${_type,,}" in
+        file | both )
+            create_folder "${_log%/*}" "${OUTPOST_USER}":"${OUTPOST_GROUP}"
+            touch "${_log}"
+            chown "${OUTPOST_USER}":"${OUTPOST_GROUP}" "${_log}"
+            create_logrotate "authentik-outpost-${_tag}" "${_log}" none "${OUTPOST_USER}" "${OUTPOST_GROUP}"
+            print_debug "Logging (${_type}) to ${_log}"
+        ;;
+    esac
+    case "${_type,,}" in
+        file )
+            exec s6-setuidgid "${OUTPOST_USER}" "$@" >>"${_log}" 2>&1
+        ;;
+        both )
+            export AUTHENTIK_OUTPOST_LOGFILE="${_log}"
+            exec s6-setuidgid "${OUTPOST_USER}" bash -c 'exec "$@" > >(tee -a "${AUTHENTIK_OUTPOST_LOGFILE}") 2>&1' outpost-run "$@"
+        ;;
+        * )
+            exec s6-setuidgid "${OUTPOST_USER}" "$@"
+        ;;
+    esac
+}

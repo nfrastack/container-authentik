@@ -1,0 +1,76 @@
+services:
+  auth-example-com:
+    container_name: auth-example-com
+    image: docker.io/nfrastack/authentik:latest
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.auth-example-com.rule=Host(`auth.example.com`)
+      - traefik.http.services.auth-example-com.loadbalancer.server.port=9000
+      - traefik.proxy.visibility=any
+      - nfrastack.herald.enable=true
+    volumes:
+      - ./data:/data
+      - ./certs:/certs
+      - ./media:/media
+      - ./custom-templates:/templates
+    environment:
+      - TIMEZONE=America/Vancouver
+
+      - AUTHENTIK_MODE=server,worker
+      - AUTHENTIK_SECRET_KEY=redacted
+
+      #- ENABLE_NGINX=TRUE # Switch proxy to point to 80 instead of 9000
+
+      - DB_HOST=auth-example-com-db
+      - DB_PORT=5432
+      - DB_NAME=authentik
+      - DB_USER=authentik
+      - DB_PASS=redacted
+    networks:
+      - proxy
+      - services
+    restart: unless-stopped
+
+  auth-example-com-db:
+    image: docker.io/nfrastack/postgres:18
+    container_name: auth-example-com-db
+    volumes:
+      - /var/local/db/auth.example.com/postgresql:/data
+    environment:
+      - TIMEZONE=America/Vancouver
+
+      - SUPERUSER_PASS=redacted
+      - DB_NAME=authentik
+      - DB_USER=authentik
+      - DB_PASS=password
+    networks:
+      - services
+    restart: always
+
+  auth-example-com-db-backup:
+    image: docker.io/nfrastack/db-backup:latest
+    container_name: auth-example-com-db-backup
+    volumes:
+      - ./dbbackup:/backup
+    environment:
+      - TIMEZONE=America/Vancouver
+      - CONTAINER_NAME=auth-example-com-db-backup
+
+      - STATS_ENABLED=TRUE
+
+      - DB01_HOST=auth-example-com-db
+      - DB01_TYPE=postgres
+      - DB01_NAME=authentik
+      - DB01_USER=authentik
+      - DB01_PASS=password
+      - DB01_BACKUP_INTERVAL=1440
+      - DB01_BACKUP_BEGIN=0000
+    networks:
+      - services
+    restart: always
+
+networks:
+  proxy:
+    external: true
+  services:
+    external: true
