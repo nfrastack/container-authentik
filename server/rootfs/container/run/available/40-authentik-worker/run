@@ -10,8 +10,8 @@ SERVICE_NAME="authentik-worker"
 check_container_initialized
 check_service_initialized init 20-authentik
 
-export AUTHENTIK_LISTEN__HTTP="127.0.0.1:9005"
-export AUTHENTIK_LISTEN__METRICS="[::]:9301"
+export AUTHENTIK_LISTEN__HTTP="${AUTHENTIK_LISTEN__HTTP:-127.0.0.1:${WORKER_HTTP_PORT}}"
+export AUTHENTIK_LISTEN__METRICS="${AUTHENTIK_LISTEN__METRICS:-[::]:${WORKER_METRICS_PORT}}"
 
 liftoff
 
@@ -21,6 +21,6 @@ export PATH="/opt/authentik/bin:/usr/local/bin:${PATH}"
 export HOME=/opt/authentik
 authentik_map_database
 authentik_map_paths
-authentik_map_logging "${WORKER_LOG_LEVEL}"
+export PROMETHEUS_MULTIPROC_PATH="${METRICS_PATH}"
 cd /usr/share/authentik
-authentik_run_logged worker "${WORKER_LOG_TYPE}" "${WORKER_LOG_PATH}" "${WORKER_LOG_FILE}" ak worker
+authentik_run_logged worker ak worker

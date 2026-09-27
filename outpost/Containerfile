@@ -93,6 +93,6 @@ RUN echo "" && \
     fi ; \
     package cleanup
 
-EXPOSE 9000 9443 9300 3389 6636 1812/udp
+EXPOSE 9000 9443 9300 9301 9302 9303 3389 6636 1812/udp
 
 COPY outpost/rootfs /

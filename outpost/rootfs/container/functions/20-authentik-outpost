@@ -2,45 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-outpost_bootstrap_filesystem() {
-    create_folder \
-                    "${LOG_PATH}" \
-                    "${OUTPOST_USER}":"${OUTPOST_GROUP}" 755
-
-    create_folder "${PROMETHEUS_MULTIPROC_PATH}" "${OUTPOST_USER}":"${OUTPOST_GROUP}"
-}
-
-outpost_enabled() {
-    local _wanted="$1"
-    local _selected
-    _selected=$(echo "${OUTPOST_TYPE}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
-    [ "${_selected}" = "${_wanted}" ]
-}
-
-outpost_configure() {
-    local _selected
-    _selected=$(echo "${OUTPOST_TYPE}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
-    case "${_selected}" in
-        ldap | proxy | rac | radius )
-            :
-        ;;
-        * )
-            print_error "Unknown OUTPOST_TYPE '${OUTPOST_TYPE}' (valid: proxy,ldap,radius,rac)"
-            return 1
-        ;;
-    esac
-    OUTPOST_TYPE="${_selected}"
-    export OUTPOST_TYPE
-
-    local _binary
-    _binary=$(outpost_binary "${_selected}")
-    if [ ! -x "${_binary}" ] ; then
-        print_error "OUTPOST_TYPE='${_selected}' needs ${_binary}, which is not in this image (rebuild with BUILD_${_selected^^}=TRUE)"
-        return 1
-    fi
-}
-
-outpost_binary() {
+_outpost_binary() {
     case "$1" in
         ldap ) echo "/usr/local/bin/authentik-ldap" ;;
         proxy ) echo "/usr/local/bin/authentik" ;;
@@ -49,20 +11,32 @@ outpost_binary() {
     esac
 }
 
-outpost_map_proxy() {
-    export AUTHENTIK_HOST
-    export AUTHENTIK_TOKEN
-    export AUTHENTIK_INSECURE
+_outpost_enabled() {
+    local _wanted="$1" _entry
+    for _entry in $(echo "${OUTPOST_TYPE}" | tr '[:upper:]' '[:lower:]' | tr ',' ' ') ; do
+        if [ "${_entry}" = "${_wanted}" ] ; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+_outpost_map_proxy() {
+    local _type="${1^^}"
+    local _token="AUTHENTIK_TOKEN_${_type}" _host="AUTHENTIK_HOST_${_type}" _insecure="AUTHENTIK_INSECURE_${_type}"
+    export AUTHENTIK_TOKEN="${!_token}"
+    export AUTHENTIK_HOST="${!_host}"
+    export AUTHENTIK_INSECURE="${!_insecure}"
     if [ -n "${AUTHENTIK_HOST_BROWSER}" ] ; then
         export AUTHENTIK_HOST_BROWSER
     fi
 }
 
-outpost_map_logging() {
+_outpost_map_logging() {
     export AUTHENTIK_LOG_LEVEL="${AUTHENTIK_LOG_LEVEL:-${LOG_LEVEL}}"
 }
 
-outpost_run_logged() {
+_outpost_run_logged() {
     local _tag="$1" _type="$2" _dir="$3" _file="$4"
     shift 4
     local _log="${_dir%/}/${_file}"
@@ -88,3 +62,40 @@ outpost_run_logged() {
         ;;
     esac
 }
+
+outpost_bootstrap_filesystem() {
+    create_folder \
+                    "${LOG_PATH}" \
+                    "${OUTPOST_USER}":"${OUTPOST_GROUP}" 755
+
+    local _type
+    for _type in proxy ldap radius rac ; do
+        if _outpost_enabled "${_type}" ; then
+            create_folder "${METRICS_PATH%/}/${_type}" "${OUTPOST_USER}":"${OUTPOST_GROUP}"
+        fi
+    done
+}
+
+
+outpost_configure() {
+    local _entry _binary
+    OUTPOST_TYPE=$(echo "${OUTPOST_TYPE}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+    export OUTPOST_TYPE
+    for _entry in $(echo "${OUTPOST_TYPE}" | tr ',' ' ') ; do
+        case "${_entry}" in
+            ldap | proxy | rac | radius )
+                :
+            ;;
+            * )
+                print_error "Unknown OUTPOST_TYPE entry '${_entry}' (valid: proxy,ldap,radius,rac)"
+                return 1
+            ;;
+        esac
+        _binary=$(_outpost_binary "${_entry}")
+        if [ ! -x "${_binary}" ] ; then
+            print_error "OUTPOST_TYPE entry '${_entry}' needs ${_binary}, which is not in this image (rebuild with BUILD_${_entry^^}=TRUE)"
+            return 1
+        fi
+    done
+}
+

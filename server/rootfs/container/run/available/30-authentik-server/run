@@ -18,6 +18,7 @@ export PATH="/opt/authentik/bin:/usr/local/bin:${PATH}"
 export HOME=/opt/authentik
 authentik_map_database
 authentik_map_paths
-authentik_map_logging "${SERVER_LOG_LEVEL}"
+export AUTHENTIK_LISTEN__METRICS="${AUTHENTIK_LISTEN__METRICS:-[::]:${SERVER_METRICS_PORT}}"
+export PROMETHEUS_MULTIPROC_PATH="${METRICS_PATH}"
 cd /usr/share/authentik
-authentik_run_logged server "${SERVER_LOG_TYPE}" "${SERVER_LOG_PATH}" "${SERVER_LOG_FILE}" ak server
+authentik_run_logged server ak server

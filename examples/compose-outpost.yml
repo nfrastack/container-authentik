@@ -1,0 +1,41 @@
+services:
+  outpost-ldap-example-com:
+    container_name: outpost-ldap-example-com
+    hostname: outpost-ldap-example-com
+    image: docker.io/nfrastack/authentik:outpost
+    ports:
+      - 3389:3389
+      - 6636:6636
+    environment:
+      - TIMEZONE=America/Vancouver
+
+      - OUTPOST_TYPE=ldap
+      - AUTHENTIK_HOST=https://auth.example.com
+      - AUTHENTIK_TOKEN=ldaptoken
+    networks:
+      - services
+    restart: unless-stopped
+
+  outpost-edge-example-com:
+    container_name: outpost-edge-example-com
+    hostname: outpost-edge-example-com
+    image: docker.io/nfrastack/authentik:outpost
+    ports:
+      - 9000:9000
+      - 9443:9443
+      - 3389:3389
+      - 6636:6636
+    environment:
+      - TIMEZONE=America/Vancouver
+
+      - OUTPOST_TYPE=proxy,ldap
+      - AUTHENTIK_HOST=https://auth.example.com
+      - AUTHENTIK_TOKEN_PROXY=proxytoken
+      - AUTHENTIK_TOKEN_LDAP=ldaptoken
+    networks:
+      - services
+    restart: unless-stopped
+
+networks:
+  services:
+    external: true

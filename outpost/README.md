@@ -55,17 +55,17 @@ Have a look at the container registries and see what tags are available.
 
 ### Quick Start
 
-One outpost runs per container, selected with `OUTPOST_TYPE`:
+Compose examples live in [`examples/compose-outpost.yml`](../examples/compose-outpost.yml).
 
-```
-docker run -e OUTPOST_TYPE=ldap \
-  -e AUTHENTIK_HOST=https://auth.example.com \
-  -e AUTHENTIK_TOKEN=<token-from-Applications->-Outposts> \
-  -p 3389:3389 -p 6636:6636 \
-  nfrastack/authentik:outpost
-```
+One or more outposts run per container, selected with `OUTPOST_TYPE` (comma separated for several eg ldap, proxy, NOT multiple of same type!)
 
-No persistent storage is required. Logs are written under `/logs/outpost/` (`LOG_TYPE=both` by default).
+Each type needs the token of its own outpost object in authentik (`AUTHENTIK_TOKEN_<TYPE>`, falling back to `AUTHENTIK_TOKEN`).
+Each type serves metrics on its own port (`9300` proxy, `9301` ldap, `9302` radius, `9303` rac).
+
+Set a stable `--hostname`. Authentik tracks outpost instances by hostname and never removes dead ones, so a new random hostname on every restart piles up stale
+instance rows in the backend that only disappear when deleted by hand.
+
+Logs are written under `/logs/outpost/` (`LOG_TYPE=both` by default).
 
 ### Building
 
@@ -80,20 +80,51 @@ make outpost-slim       # without RAC/guacd
 
 Below is the complete list of available options that can be used to customize your installation.
 
-* Variables showing a value under the `_FILE` column can also be supplied via `<VARIABLE>_FILE` pointing at a file (e.g. docker secrets); see the base image documentation.
 
-| Variable                 | Description                                                | Default          | `_FILE` |
-| ------------------------ | ---------------------------------------------------------- | ---------------- | ------- |
-| `OUTPOST_TYPE`           | `proxy`, `ldap`, `radius` or `rac`                         | `proxy`          |         |
-| `LOG_LEVEL`              | Log level                                                  | `info`           |         |
-| `LOG_TYPE`               | `console` `file` `both`                                    | `file`           |         |
-| `LOG_PATH`               | Log Path                                                   | `/logs/`         |         |
-| `AUTHENTIK_HOST`         | URL of the authentik server (required)                     |                  |         |
-| `AUTHENTIK_TOKEN`        | Outpost token from authentik (required, `_FILE` supported) |                  | x       |
-| `AUTHENTIK_INSECURE`     | Skip TLS verification to the server                        | `FALSE`          |         |
-| `AUTHENTIK_HOST_BROWSER` | Public URL for user-facing interactions (proxy)            |                  |         |
-| `GUACD_HOST`             | External guacd host when not bundled                       | `127.0.0.1`      |         |
-| `GUACD_PORT`             | External guacd when not bundled                            | `4822`           |         |
+| Variable                    | Description                                              | Default               | `_FILE` |
+| --------------------------- | -------------------------------------------------------- | --------------------- | ------- |
+| `OUTPOST_TYPE`              | `proxy`, `ldap`, `radius`, `rac`, comma separated        | `proxy`               |         |
+| `LOG_LEVEL`                 | Log level                                                | `info`                |         |
+| `LOG_TYPE`                  | Type `console` `file` `both`                             | `file`                |         |
+| `LOG_PATH`                  | Log Path                                                 | `/logs/`              |         |
+| `AUTHENTIK_HOST`            | Fallback URL of the authentik server (required)          |                       |         |
+| `AUTHENTIK_HOST_PROXY`      | URL of the authentik server for the proxy outpost        | ${AUTHENTIK_HOST}     |         |
+| `AUTHENTIK_HOST_LDAP`       | URL of the authentik server for the ldap outpost         | ${AUTHENTIK_HOST}     |         |
+| `AUTHENTIK_HOST_RADIUS`     | URL of the authentik server for the radius outpost       | ${AUTHENTIK_HOST}     |         |
+| `AUTHENTIK_HOST_RAC`        | URL of the authentik server for the rac outpost          | ${AUTHENTIK_HOST}     |         |
+| `AUTHENTIK_TOKEN`           | Fallback token for all enabled types                     |                       | x       |
+| `AUTHENTIK_INSECURE`        | Skip TLS verification to the server                      | `FALSE`               |         |
+| `AUTHENTIK_INSECURE_PROXY`  | Skip TLS verification for the proxy outpost              | ${AUTHENTIK_INSECURE} |         |
+| `AUTHENTIK_INSECURE_LDAP`   | Skip TLS verification for the ldap outpost               | ${AUTHENTIK_INSECURE} |         |
+| `AUTHENTIK_INSECURE_RADIUS` | Skip TLS verification for the radius outpost             | ${AUTHENTIK_INSECURE} |         |
+| `AUTHENTIK_INSECURE_RAC`    | Skip TLS verification for the rac outpost                | ${AUTHENTIK_INSECURE} |         |
+| `AUTHENTIK_HOST_BROWSER`    | Browser-reachable authentik URL for login redirects when |                       |         |
+|                             | it differs from AUTHENTIK_HOST                           |                       |         |
+| `PROXY_LOG_FILE`            | Proxy log file name                                      | `proxy.log`           |         |
+| `PROXY_LOG_PATH`            | Proxy log directory                                      | ${LOG_PATH}           |         |
+| `PROXY_LOG_TYPE`            | Proxy log destination                                    | ${LOG_TYPE}           |         |
+| `LDAP_LOG_FILE`             | LDAP log file name                                       | `ldap.log`            |         |
+| `LDAP_LOG_PATH`             | LDAP log directory                                       | ${LOG_PATH}           |         |
+| `LDAP_LOG_TYPE`             | LDAP log destination                                     | ${LOG_TYPE}           |         |
+| `RADIUS_LOG_FILE`           | RADIUS log file name                                     | `radius.log`          |         |
+| `RADIUS_LOG_PATH`           | RADIUS log directory                                     | ${LOG_PATH}           |         |
+| `RADIUS_LOG_TYPE`           | RADIUS log destination                                   | ${LOG_TYPE}           |         |
+| `RAC_LOG_FILE`              | RAC log file name                                        | `rac.log`             |         |
+| `RAC_LOG_PATH`              | RAC log directory                                        | ${LOG_PATH}           |         |
+| `RAC_LOG_TYPE`              | RAC log destination                                      | ${LOG_TYPE}           |         |
+| `GUACD_LOG_FILE`            | guacd log file name                                      | `guacd.log`           |         |
+| `GUACD_LOG_PATH`            | guacd log directory                                      | ${LOG_PATH}           |         |
+| `GUACD_LOG_TYPE`            | guacd log destination                                    | ${LOG_TYPE}           |         |
+| `AUTHENTIK_TOKEN_PROXY`     | Token of the proxy outpost object                        | ${AUTHENTIK_TOKEN}    | x       |
+| `PROXY_METRICS_PORT`        | Proxy outpost metrics port                               | `9300`                |         |
+| `AUTHENTIK_TOKEN_LDAP`      | Token of the ldap outpost object                         | ${AUTHENTIK_TOKEN}    | x       |
+| `LDAP_METRICS_PORT`         | LDAP outpost metrics port                                | `9301`                |         |
+| `AUTHENTIK_TOKEN_RADIUS`    | Token of the radius outpost object                       | ${AUTHENTIK_TOKEN}    | x       |
+| `RADIUS_METRICS_PORT`       | RADIUS outpost metrics port                              | `9302`                |         |
+| `AUTHENTIK_TOKEN_RAC`       | Token of the rac outpost object                          | ${AUTHENTIK_TOKEN}    | x       |
+| `RAC_METRICS_PORT`          | RAC outpost metrics port                                 | `9303`                |         |
+| `GUACD_HOST`                | External guacd host when not bundled                     | `127.0.0.1`           |         |
+| `GUACD_PORT`                | External guacd when not bundled                          | `4822`                |         |
 
 Any other authentik setting from the [configuration reference](https://docs.goauthentik.io/docs/install-config/configuration/) can be passed through as `AUTHENTIK_<SECTION>__<KEY>`
 (eg `AUTHENTIK_LISTEN__HTTP`).
@@ -107,15 +138,18 @@ Any other authentik setting from the [configuration reference](https://docs.goau
 
 ### Networking
 
-| Port   | Protocol | Description  |
-| ------ | -------- | ------------ |
-| `1812` | `udp`    | Radius       |
-| `3389` | `tcp`    | LDAP         |
-| `4822` | `tcp`    | guacd        |
-| `6636` | `tcp`    | LDAP TLS     |
-| `9000` | `tcp`    | Proxy / RAC  |
-| `9300` | `tcp`    | Metrics      |
-| `9443` | `tcp`    | Proxy TLS    |
+| Port   | Protocol | Description    |
+| ------ | -------- | -------------- |
+| `1812` | `udp`    | Radius         |
+| `3389` | `tcp`    | LDAP           |
+| `4822` | `tcp`    | guacd          |
+| `6636` | `tcp`    | LDAP TLS       |
+| `9000` | `tcp`    | Proxy / RAC    |
+| `9300` | `tcp`    | Proxy metrics  |
+| `9301` | `tcp`    | LDAP metrics   |
+| `9302` | `tcp`    | RADIUS metrics |
+| `9303` | `tcp`    | RAC metrics    |
+| `9443` | `tcp`    | Proxy TLS      |
 
 * * *
 
@@ -127,13 +161,13 @@ For debugging and maintenance, `bash` and `sh` are available in the container.
 
 Useful paths inside the image:
 
-| Path                                | Description                              |
-| ----------------------------------- | ---------------------------------------- |
-| `/usr/local/bin/authentik`          | Proxy outpost binary (`--help`)          |
-| `/usr/local/bin/authentik-ldap`     | LDAP outpost binary                      |
-| `/usr/local/bin/authentik-radius`   | RADIUS outpost binary                    |
-| `/usr/local/bin/authentik-rac`      | RAC outpost binary                       |
-| `/usr/sbin/guacd`                   | Bundled Guacamole daemon (RAC only)      |
+| Path                              | Description                         |
+| --------------------------------- | ----------------------------------- |
+| `/usr/local/bin/authentik`        | Proxy outpost binary (`--help`)     |
+| `/usr/local/bin/authentik-ldap`   | LDAP outpost binary                 |
+| `/usr/local/bin/authentik-radius` | RADIUS outpost binary               |
+| `/usr/local/bin/authentik-rac`    | RAC outpost binary                  |
+| `/usr/sbin/guacd`                 | Bundled Guacamole daemon (RAC only) |
 
 ## Support & Maintenance
 

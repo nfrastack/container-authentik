@@ -133,27 +133,31 @@ Below is the complete list of available options that can be used to customize yo
 
 ### Authentik General Options
 
-| Parameter                  | Description                                                       | Default                         | _FILE |
-| -------------------------- | ----------------------------------------------------------------- | ------------------------------- | ----- |
-| `AUTHENTIK_MODE`           | `SERVER` `WORKER` `PROXY` comma seperated                         | `server,worker`                 |       |
-| `AUTHENTIK_SECRET_KEY`     | Secret key for cryptographic signing (required for server/worker) |                                 |       |
-| `LISTEN_PORT`              | HTTP port the server listens on                                   | `9000`                          |       |
-| `PROMETHEUS_MULTIPROC_DIR` | Directory for prometheus multiprocess metrics                     | `/tmp/authentik_prometheus_tmp` |       |
-| `LOG_LEVEL`                | Log level                                                         | `info`                          |       |
-| `LOG_TYPE`                 | Log destination: `console`, `file`, or `both`                     | `file`                          |       |
-| `LOG_PATH`                 | Default log file directory (`file`/`both` modes)                  | `/logs/authentik/`              |       |
-| `PROXY_LOG_FILE`           | Proxy log file name                                               | `proxy.log`                     |       |
-| `PROXY_LOG_LEVEL`          | Proxy log level                                                   | ${LOG_LEVEL}                    |       |
-| `PROXY_LOG_PATH`           | Proxy log directory                                               | ${LOG_PATH}                     |       |
-| `PROXY_LOG_TYPE`           | Proxy log destination                                             | ${LOG_TYPE}                     |       |
-| `SERVER_LOG_FILE`          | Server log file name                                              | `server.log`                    |       |
-| `SERVER_LOG_LEVEL`         | Server log level                                                  | ${LOG_LEVEL}                    |       |
-| `SERVER_LOG_PATH`          | Server log directory                                              | ${LOG_PATH}                     |       |
-| `SERVER_LOG_TYPE`          | Server log destination                                            | ${LOG_TYPE}                     |       |
-| `WORKER_LOG_FILE`          | Worker log file name                                              | `worker.log`                    |       |
-| `WORKER_LOG_LEVEL`         | Worker log level                                                  | ${LOG_LEVEL}                    |       |
-| `WORKER_LOG_PATH`          | Worker log directory                                              | ${LOG_PATH}                     |       |
-| `WORKER_LOG_TYPE`          | Worker log destination                                            | ${LOG_TYPE}                     |       |
+| Parameter              | Description                                                       | Default                         | _FILE |
+| ---------------------- | ----------------------------------------------------------------- | ------------------------------- | ----- |
+| `AUTHENTIK_MODE`       | `SERVER` `WORKER` `PROXY` comma seperated                         | `server,worker`                 |       |
+| `AUTHENTIK_SECRET_KEY` | Secret key for cryptographic signing (required for server/worker) |                                 |       |
+| `LISTEN_PORT`          | HTTP port the server listens on                                   | `9000`                          |       |
+| `METRICS_PATH`         | Directory for prometheus multiprocess metrics                     | `/tmp/authentik_prometheus_tmp` |       |
+| `LOG_LEVEL`            | Log level                                                         | `info`                          |       |
+| `LOG_TYPE`             | Log destination `console` `file` `both`                           | `file`                          |       |
+| `LOG_PATH`             | Log directory (`file`/`both` modes)                               | `/logs/authentik/`              |       |
+| `PROXY_LOG_FILE`       | Proxy log file name                                               | `proxy.log`                     |       |
+| `PROXY_LOG_LEVEL`      | Proxy log level                                                   | ${LOG_LEVEL}                    |       |
+| `PROXY_LOG_PATH`       | Proxy log directory                                               | ${LOG_PATH}                     |       |
+| `PROXY_LOG_TYPE`       | Proxy log destination                                             | ${LOG_TYPE}                     |       |
+| `PROXY_METRICS_PORT`   | Embedded proxy metrics port                                       | `9302`                          |       |
+| `SERVER_LOG_FILE`      | Server log file name                                              | `server.log`                    |       |
+| `SERVER_LOG_LEVEL`     | Server log level                                                  | ${LOG_LEVEL}                    |       |
+| `SERVER_LOG_PATH`      | Server log directory                                              | ${LOG_PATH}                     |       |
+| `SERVER_LOG_TYPE`      | Server log destination                                            | ${LOG_TYPE}                     |       |
+| `SERVER_METRICS_PORT`  | Server metrics port                                               | `9300`                          |       |
+| `WORKER_LOG_FILE`      | Worker log file name                                              | `worker.log`                    |       |
+| `WORKER_LOG_LEVEL`     | Worker log level                                                  | ${LOG_LEVEL}                    |       |
+| `WORKER_LOG_PATH`      | Worker log directory                                              | ${LOG_PATH}                     |       |
+| `WORKER_LOG_TYPE`      | Worker log destination                                            | ${LOG_TYPE}                     |       |
+| `WORKER_HTTP_PORT`     | Worker HTTP listen port (localhost-bound)                         | `9005`                          |       |
+| `WORKER_METRICS_PORT`  | Worker metrics port                                               | `9301`                          |       |
 
 ### Database Options
 
@@ -190,17 +194,17 @@ Any other authentik setting from the [configuration reference](https://docs.goau
 
 ### Networking
 
-| Port   | Protocol | Description                                  |
-| ------ | -------- | -------------------------------------------- |
-| `80`   | `tcp`    | Nginx                                        |
-| `9000` | `tcp`    | Authentik server HTTP                        |
-| `9443` | `tcp`    | Authentik server HTTPS                       |
-| `9300` | `tcp`    | Server metrics                               |
-| `9005` | `tcp`    | Worker healthcheck (localhost only)          |
-| `9301` | `tcp`    | Worker metrics                               |
-| `9001` | `tcp`    | Proxy outpost HTTP (only when co-located)    |
-| `9444` | `tcp`    | Proxy outpost HTTPS (only when co-located)   |
-| `9302` | `tcp`    | Proxy outpost metrics (only when co-located) |
+| Port   | Protocol | Description            |
+| ------ | -------- | ---------------------- |
+| `80`   | `tcp`    | Nginx                  |
+| `9000` | `tcp`    | Authentik server HTTP  |
+| `9443` | `tcp`    | Authentik server HTTPS |
+| `9300` | `tcp`    | Server metrics         |
+| `9005` | `tcp`    | Worker healthcheck     |
+| `9301` | `tcp`    | Worker metrics         |
+| `9001` | `tcp`    | Proxy outpost HTTP     |
+| `9444` | `tcp`    | Proxy outpost HTTPS    |
+| `9302` | `tcp`    | Proxy outpost metrics  |
 
 * * *
 

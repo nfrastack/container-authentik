@@ -8,23 +8,41 @@ prepare_service 20-authentik-outpost
 SERVICE_NAME="authentik-outpost"
 
 transform_var file \
-                    AUTHENTIK_TOKEN
+                    AUTHENTIK_TOKEN \
+                    AUTHENTIK_TOKEN_LDAP \
+                    AUTHENTIK_TOKEN_PROXY \
+                    AUTHENTIK_TOKEN_RAC \
+                    AUTHENTIK_TOKEN_RADIUS
 
 outpost_configure
 outpost_bootstrap_filesystem
 
-outpost_enabled proxy || service_stop 30-outpost-proxy
-outpost_enabled ldap || service_stop 40-outpost-ldap
-outpost_enabled radius || service_stop 50-outpost-radius
-outpost_enabled rac || service_stop 60-outpost-rac
+_outpost_enabled proxy || service_stop 30-outpost-proxy
+_outpost_enabled ldap || service_stop 40-outpost-ldap
+_outpost_enabled radius || service_stop 50-outpost-radius
+_outpost_enabled rac || service_stop 60-outpost-rac
 
-if outpost_enabled rac && command -v guacd >/dev/null 2>&1 ; then
+if _outpost_enabled rac && command -v guacd >/dev/null 2>&1 ; then
     :
 else
     service_stop 61-guacd
 fi
 
 sanity_var AUTHENTIK_HOST "URL of authentik server"
-sanity-var AUTHENTIK_TOKEN "outpost token from server"
+
+for _type in proxy ldap radius rac ; do
+    if _outpost_enabled "${_type}" ; then
+        _token_var="AUTHENTIK_TOKEN_${_type^^}"
+        if [ -z "${!_token_var}" ] ; then
+            print_error "OUTPOST_TYPE entry '${_type}' has no token - set ${_token_var} or AUTHENTIK_TOKEN"
+            exit 1
+        fi
+        _host_var="AUTHENTIK_HOST_${_type^^}"
+        if [ -z "${!_host_var}" ] ; then
+            print_error "OUTPOST_TYPE entry '${_type}' has no server URL - set ${_host_var} or AUTHENTIK_HOST"
+            exit 1
+        fi
+    fi
+done
 
 liftoff

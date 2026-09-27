@@ -15,7 +15,7 @@ liftoff
 if authentik_mode_enabled server ; then
     export AUTHENTIK_LISTEN__HTTP="[::]:9001"
     export AUTHENTIK_LISTEN__HTTPS="[::]:9444"
-    export AUTHENTIK_LISTEN__METRICS="[::]:9302"
+    export AUTHENTIK_LISTEN__METRICS="${AUTHENTIK_LISTEN__METRICS:-[::]:${PROXY_METRICS_PORT}}"
 fi
 
 print_start "Starting Authentik  $(grep -o "ADD: Authentik .* |" /container/build/${IMAGE_NAME/\//_}/build.log | awk '{print $3}') proxy outpost"
@@ -24,6 +24,6 @@ export PATH="/opt/authentik/bin:/usr/local/bin:${PATH}"
 export HOME=/opt/authentik
 authentik_map_proxy
 authentik_map_paths
-authentik_map_logging "${PROXY_LOG_LEVEL}"
+export PROMETHEUS_MULTIPROC_PATH="${METRICS_PATH%/}/proxy"
 cd /usr/share/authentik
-authentik_run_logged proxy "${PROXY_LOG_TYPE}" "${PROXY_LOG_PATH}" "${PROXY_LOG_FILE}" /usr/local/bin/authentik proxy
+authentik_run_logged proxy /usr/local/bin/authentik proxy

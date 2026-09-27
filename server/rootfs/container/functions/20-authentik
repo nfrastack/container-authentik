@@ -3,20 +3,25 @@
 # SPDX-License-Identifier: MIT
 
 authentik_bootstrap_filesystem() {
-    create_folder \
-                    "${CERTS_PATH},\
-                    ${DATA_PATH},\
-                    /media,\ ## EH?
-                    ${BLUEPRINTS_PATH},\
-                    ${TEMPLATE_PATH}" \
-                    ${AUTHENTIK_USER}:${AUTHENTIK_GROUP} 755
+    if authentik_mode_enabled server || authentik_mode_enabled worker ; then
+        create_folder \
+                        "${CERTS_PATH},\
+                        ${DATA_PATH},\
+                        /media,\ ## EH?
+                        ${BLUEPRINTS_PATH},\
+                        ${TEMPLATE_PATH}" \
+                        ${AUTHENTIK_USER}:${AUTHENTIK_GROUP} 755
 
-    if [ ! -e "${DATA_PATH%/}/media" ] ; then
-        ln -s /media "${DATA_PATH%/}"/media
-        chown -h ${AUTHENTIK_USER}:${AUTHENTIK_GROUP} "${DATA_PATH%/}"/media
+        if [ ! -e "${DATA_PATH%/}/media" ] ; then
+            ln -s /media "${DATA_PATH%/}"/media
+            chown -h ${AUTHENTIK_USER}:${AUTHENTIK_GROUP} "${DATA_PATH%/}"/media
+        fi
     fi
 
-    create_folder "${PROMETHEUS_MULTIPROC_PATH}" "${AUTHENTIK_USER}":"${AUTHENTIK_GROUP}"
+    create_folder "${METRICS_PATH}" "${AUTHENTIK_USER}":"${AUTHENTIK_GROUP}"
+    if authentik_mode_enabled proxy ; then
+        create_folder "${METRICS_PATH%/}/proxy" "${AUTHENTIK_USER}":"${AUTHENTIK_GROUP}"
+    fi
 }
 
 authentik_mode_enabled() {
@@ -61,13 +66,13 @@ authentik_map_proxy() {
     fi
 }
 
-authentik_map_logging() {
-    export AUTHENTIK_LOG_LEVEL="$1"
-}
-
 authentik_run_logged() {
-    local _tag="$1" _type="$2" _dir="$3" _file="$4"
-    shift 4
+    local _name="$1"
+    shift
+    local _upper="${_name^^}"
+    local _type_var="${_upper}_LOG_TYPE" _dir_var="${_upper}_LOG_PATH" _file_var="${_upper}_LOG_FILE" _level_var="${_upper}_LOG_LEVEL"
+    local _type="${!_type_var}" _dir="${!_dir_var}" _file="${!_file_var}"
+    export AUTHENTIK_LOG_LEVEL="${!_level_var}"
     local _log="${_dir%/}/${_file}"
     case "${_type,,}" in
         file | both )
@@ -75,7 +80,7 @@ authentik_run_logged() {
             chown "${AUTHENTIK_USER}":"${AUTHENTIK_GROUP}" "${_log%/*}"
             touch "${_log}"
             chown "${AUTHENTIK_USER}":"${AUTHENTIK_GROUP}" "${_log}"
-            create_logrotate "authentik-${_tag}" "${_log}" none "${AUTHENTIK_USER}" "${AUTHENTIK_GROUP}"
+            create_logrotate "authentik-${_name}" "${_log}" none "${AUTHENTIK_USER}" "${AUTHENTIK_GROUP}"
             print_debug "Logging (${_type}) to ${_log}"
         ;;
     esac
