@@ -53,6 +53,7 @@ RUN echo "" && \
                                 && \
     AUTHENTIK_RUN_DEPS_ALPINE=" \
                                     heimdal-libs \
+                                    jq \
                                     krb5-libs \
                                     libffi \
                                     libltdl \

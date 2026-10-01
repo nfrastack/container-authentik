@@ -45,6 +45,7 @@ ENV \
 
 RUN echo "" && \
     OUTPOST_RUN_DEPS_ALPINE=" \
+                                    jq \
                                     libgcc \
                                     libstdc++ \
                                 " \
