@@ -120,14 +120,16 @@ Below is the complete list of available options that can be used to customize yo
 
 ### Container Options
 
-| Parameter         | Description             | Default        | _FILE |
-| ----------------- | ----------------------- | -------------- | ----- |
-| `AUTHENTIK_USER`  | User authentik runs as  | `authentik`    |       |
-| `AUTHENTIK_GROUP` | Group authentik runs as | `authentik`    |       |
-| `DATA_PATH`       | Local file storage      | `/data/`       |       |
-| `CERTS_PATH`      | Certificates            | `/certs/`      |       |
-| `BLUEPRINTS_PATH` | Blueprints              | `/blueprints/` |       |
-| `TEMPLATE_PATH`   | Custom Templates        | `/templates/`  |       |
+| Parameter                       | Description                                        | Default        | _FILE |
+| ------------------------------- | -------------------------------------------------- | -------------- | ----- |
+| `AUTHENTIK_USER`                | User authentik runs as                             | `authentik`    |       |
+| `AUTHENTIK_GROUP`               | Group authentik runs as                            | `authentik`    |       |
+| `AUTHENTIK_CUSTOM_PATH`         | Custom files overly into `/usr/share/authentik/`   |                |       |
+| `AUTHENTIK_CUSTOM_SCRIPTS_PATH` | Custom init scripts                                |                |       |
+| `DATA_PATH`                     | Local file storage                                 | `/data/`       |       |
+| `CERTS_PATH`                    | Certificates                                       | `/certs/`      |       |
+| `BLUEPRINTS_PATH`               | Blueprints                                         | `/blueprints/` |       |
+| `TEMPLATE_PATH`                 | Custom Templates                                   | `/templates/`  |       |
 
 
 
