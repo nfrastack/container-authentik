@@ -1,3 +1,9 @@
+## 2026.8.4 2026-10-14 <code at nfrastack dot com>
+
+   ### Added
+      - Authentik 2026.8.4
+
+
 ## 2026.8.3.2pre 2026-10-02 <code at nfrastack dot com>
 
   ### Added

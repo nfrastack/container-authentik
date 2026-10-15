@@ -14,7 +14,7 @@
 #
 # Everything is parameterized
 #   make outpost BUILD_RAC=FALSE BUILD_GUACD=FALSE
-#   make all BASE_IMAGE=docker.io/nfrastack/base:alpine_3.24 AUTHENTIK_VERSION=version/2026.8.3
+#   make all BASE_IMAGE=docker.io/nfrastack/base:alpine_3.24 AUTHENTIK_VERSION=version/2026.8.4
 
 export DOCKER_BUILDKIT=0
 
@@ -22,9 +22,9 @@ BASE_IMAGE       ?= docker.io/nfrastack/base:alpine_3.24
 BUILDER_TAG      ?= nfrastack/authentik-builder:local
 SERVER_TAG       ?= nfrastack/authentik:local
 OUTPOST_TAG      ?= nfrastack/authentik-outpost:local
-AUTHENTIK_VERSION ?= version/2026.8.3
+AUTHENTIK_VERSION ?= version/2026.8.4
 PYTHON_VERSION   ?= 3.14
-PNPM_VERSION     ?= 12.4.0
+PNPM_VERSION     ?= 11.20.0
 
 BUILD_PROXY      ?= TRUE
 BUILD_LDAP       ?= TRUE
