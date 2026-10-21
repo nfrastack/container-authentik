@@ -24,7 +24,7 @@ on:
 
 env:
   BASE_IMAGE: ${{ inputs.base_image || 'docker.io/nfrastack/base:alpine_3.24' }}
-  AUTHENTIK_VERSION: ${{ inputs.authentik_version || 'version/2026.8.3' }}
+  AUTHENTIK_VERSION: ${{ inputs.authentik_version || 'version/2026.8.5' }}
   PYTHON_VERSION: ${{ inputs.python_version || '3.14' }}
   PNPM_VERSION: ${{ inputs.pnpm_version || '12.4.0' }}
   BUILDER_TAG: nfrastack/authentik-builder:local
