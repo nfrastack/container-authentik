@@ -1,3 +1,9 @@
+## 2026.8.5.1 2026-10-21 <code at nfrastack dot com>
+
+   ### Added
+      - Pin pnpm to allow aarch64 build
+
+
 ## 2026.8.5 2026-10-26 <code at nfrastack dot com>
 
    ### Added
@@ -13,7 +19,7 @@
 
   ### Added
     - Custom file/scripts
-    
+
 ## 2026.8.3.1 2026-09-27 <code at nfrastack dot com>
 
   ### Changed

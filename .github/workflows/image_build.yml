@@ -10,23 +10,23 @@ on:
   workflow_dispatch:
     inputs:
       base_image:
-        description: 'Base image (default: docker.io/nfrastack/base:alpine_3.24)'
+        description: 'Base image'
         required: false
       authentik_version:
-        description: 'Authentik pin (default: version/2026.8.3)'
+        description: 'Authentik pin'
         required: false
       python_version:
-        description: 'Python version (default: 3.14)'
+        description: 'Python version'
         required: false
       pnpm_version:
-        description: 'pnpm version (default: 12.4.0)'
+        description: 'pnpm version'
         required: false
 
 env:
   BASE_IMAGE: ${{ inputs.base_image || 'docker.io/nfrastack/base:alpine_3.24' }}
   AUTHENTIK_VERSION: ${{ inputs.authentik_version || 'version/2026.8.5' }}
   PYTHON_VERSION: ${{ inputs.python_version || '3.14' }}
-  PNPM_VERSION: ${{ inputs.pnpm_version || '12.4.0' }}
+  PNPM_VERSION: ${{ inputs.pnpm_version || '11.20.0' }}
   BUILDER_TAG: nfrastack/authentik-builder:local
 
 jobs:

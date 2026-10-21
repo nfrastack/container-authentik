@@ -75,20 +75,17 @@ RUN echo "" && \
     package install \
                         BUILDER_BUILD_DEPS \
                         && \
-    package build go && \
+    package build go buildtime && \
     package build python "${PYTHON_VERSION}" && \
     pip install --break-system-packages uv && \
     \
     clone_git_repo "${AUTHENTIK_REPO_URL}" "${AUTHENTIK_VERSION}" /usr/src/authentik && \
     \
     RUST_VERSION=$(sed -n 's/channel = "\(.*\)"/\1/p' /usr/src/authentik/rust-toolchain.toml) && \
-    curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "${RUST_VERSION}" && \
-    source /root/.cargo/env && \
-    export PATH="/root/.cargo/bin:${PATH}" && \
+    package build rust "${RUST_VERSION}" buildtime && \
     export LIBCLANG_PATH="/usr/lib/llvm22/lib" && \
     export RUSTFLAGS="-L /usr/lib --cfg tokio_unstable -C strip=symbols" && \
     export AWS_LC_FIPS_SYS_CC=clang && \
-    container_build_log add "Rust" "${RUST_VERSION}" "https://sh.rustup.rs" && \
     \
     npm install -g "pnpm@${PNPM_VERSION}" && \
     container_build_log add "pnpm" "${PNPM_VERSION}" "https://pnpm.io" && \
@@ -117,7 +114,10 @@ RUN echo "" && \
     \
     cargo fetch --locked && \
     if [ "$(uname -m)" = "aarch64" ] ; then \
-        FIPS_CRATE=$(echo /root/.cargo/registry/src/*/aws-lc-fips-sys-0.14.2) && \
+        FIPS_VER=$(grep -A1 'name = "aws-lc-fips-sys"' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p') && \
+        test -n "${FIPS_VER}" && \
+        echo "aws-lc-fips-sys version: ${FIPS_VER}" && \
+        FIPS_CRATE=$(echo ${CARGO_HOME:-/root/.cargo}/registry/src/*/aws-lc-fips-sys-${FIPS_VER}) && \
         test -d "${FIPS_CRATE}" && \
         SI_SRC="${FIPS_CRATE}/aws-lc/crypto/fipsmodule/service_indicator/service_indicator.c" && \
         test -f "${SI_SRC}" && \
@@ -135,8 +135,7 @@ RUN echo "" && \
     go build -ldflags "-s -w" -tags outpost_static_embed -o /tmp/authentik-rac ./cmd/rac && \
     container_build_log add "Authentik outposts (go)" "${AUTHENTIK_VERSION}" "${AUTHENTIK_REPO_URL}" && \
     \
-    rm -rf /usr/local/bin/go /usr/local/bin/godoc /usr/local/bin/gofmt \
-           /usr/local/bin/pnpm /usr/local/bin/pnpx \
+    rm -rf /usr/local/bin/pnpm /usr/local/bin/pnpx \
            /usr/local/bin/uv /usr/local/bin/uvx \
            /usr/local/lib/node_modules && \
     \
@@ -189,15 +188,12 @@ RUN echo "" && \
         echo "PYTHON_VERSION=\"$(/usr/local/bin/python3 --version 2>&1 | awk '{print $2}')\"" ; \
         echo "PNPM_VERSION=\"${PNPM_VERSION}\"" ; \
     } > /out/versions.env && \
-    rm -rf /root/.cargo \
-           /root/.rustup \
-           /root/.cache \
+    rm -rf /root/.cache \
            /root/.local \
            /root/.npm \
            /root/go \
            /usr/src/authentik \
            /usr/src/python \
-           /usr/src/go \
            /usr/src/patches \
            /tmp/authentik-* && \
     package cleanup && \

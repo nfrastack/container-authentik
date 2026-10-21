@@ -103,9 +103,6 @@ RUN echo "" && \
     ln -s /usr/share/authentik/web /web && \
     /opt/authentik/bin/python -c "import django_channels_postgres, django_dramatiq_postgres, django_postgres_cache, guardian; print('editable imports OK')" && \
     rm -f \
-            /usr/local/bin/go \
-            /usr/local/bin/godoc \
-            /usr/local/bin/gofmt \
             /usr/local/bin/pn \
             /usr/local/bin/pnx \
             /usr/local/lib/libpython*.a \
