@@ -22,7 +22,7 @@ BASE_IMAGE       ?= docker.io/nfrastack/base:alpine_3.24
 BUILDER_TAG      ?= nfrastack/authentik-builder:local
 SERVER_TAG       ?= nfrastack/authentik:local
 OUTPOST_TAG      ?= nfrastack/authentik-outpost:local
-AUTHENTIK_VERSION ?= version/2026.8.5
+AUTHENTIK_VERSION ?= version/2026.8.6
 PYTHON_VERSION   ?= 3.14
 PNPM_VERSION     ?= 11.20.0
 
