@@ -1,4 +1,10 @@
-## 202.8.6 2026-11-19 <code at nfrastack dot com>
+## 2026.8.7 2026-11-26 <code at nfrastack dot com>
+
+   ### Added
+      - Authentik 2026.8.7
+
+
+## 2026.8.6 2026-11-19 <code at nfrastack dot com>
 
    ### Added
       - Authentik 2026.8.6
